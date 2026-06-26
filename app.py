@@ -2,11 +2,12 @@ import streamlit as st
 import datetime
 import pandas as pd
 import requests
+from apscheduler.schedulers.background import BackgroundScheduler
 
 # 1. إعدادات الصفحة الأساسية
 st.set_page_config(page_title="Mammogram AI", page_icon="🎀", layout="wide")
 
-# ضع التوكن (Token) الخاص بالبوت مالتك اللي أخذته من BotFather هنا لتفعيل التليجرام:
+# 🔴 ضع التوكن (Token) الخاص بالبوت مالتك اللي أخذته من BotFather هنا:
 TOKEN = "YOUR_BOT_TOKEN_HERE"
 
 # دالة إرسال الرسالة إلى التليجرام
@@ -24,18 +25,45 @@ def send_telegram_notification(chat_id, message_text):
     except Exception as e:
         pass
 
+# دالة الفحص اليومي للمواعيد (تشتغل بالخلفية تلقائياً)
+def check_upcoming_appointments():
+    if 'database' in st.session_state and st.session_state.database:
+        # حساب تاريخ يوم غد
+        tomorrow = (datetime.date.today() + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+        
+        for patient in st.session_state.database:
+            # إذا كان موعد المريض يطابق تاريخ باجر
+            if patient["موعد الاشعاع / Appointment"] == tomorrow:
+                # نص رسالة التذكير للمريض
+                reminder_text = (
+                    f"🔔 *تذكير بموعد الإشعاع*\n\n"
+                    f"عزيزتي المريضة: {patient['اسم المريض / Name']}\n"
+                    f"نود تذكيركِ بأن موعد جلسة الإشعاع القادمة الخاصة بكِ هو غداً بتاريخ *{tomorrow}*.\n"
+                    f"يرجى الحضور في الوقت المحدد.\n\n"
+                    f"نتمنى لكِ الشفاء العاجل 🌸"
+                )
+                # إرسال التنبيه (حالياً يروح لحسابك للتجربة)
+                send_telegram_notification("@atmanan_37", reminder_text)
+
+# تشغيل الجدولة التلقائية في الخلفية لمرة واحدة فقط
+if 'scheduler_started' not in st.session_state:
+    scheduler = BackgroundScheduler()
+    # الفحص يشتغل تلقائياً كل يوم (تقدر تغير التوقيت، حالياً مبرمج يفحص كل 24 ساعة)
+    scheduler.add_job(check_upcoming_appointments, 'interval', days=1)
+    scheduler.start()
+    st.session_state.scheduler_started = True
+
 # 2. إدارة الحالة (State Management)
 if 'lang' not in st.session_state:
-    st.session_state.lang = 'Ar'  # الافتراضي عربي
+    st.session_state.lang = 'Ar'
 if 'theme' not in st.session_state:
     st.session_state.theme = 'Light'
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'database' not in st.session_state:
-    # الجدول يبدأ فارغاً تماماً وبدون أي بيانات وهمية
     st.session_state.database = []
 
-# النصوص المترجمة للغتين (تم إزالة الملصقات وتحديث الحقول للجدول الجديد)
+# النصوص المترجمة
 text = {
     'Ar': {
         'title': "نظام فحص الماموجرام الذكي",
@@ -65,7 +93,7 @@ text = {
         'support_desc': "إذا واجهت أي خلل تقني، يرجى كتابته هنا:",
         'send': "إرسال بلاغ",
         'msg_saved': "تم الدخول بنجاح! تم فتح القوائم أدناه.",
-        'msg_record_added': "تم إضافة المريض بنجاح إلى جدول البيانات وإرسال الإشعار!"
+        'msg_record_added': "تم إضافة المريض بنجاح إلى جدول البيانات! (سيتم إرسال تذكير تلقائي قبل الموعد بيوم)"
     },
     'En': {
         'title': "Smart Mammogram System",
@@ -84,7 +112,7 @@ text = {
         'upload_sec': "Upload Mammogram",
         'upload_placeholder': "Choose a mammogram image or drag it here...",
         'result_sec': "AI Analysis Result",
-        'normal': "NormalLog",
+        'normal': "Normal",
         'benign': "Abnormal - Benign",
         'malignant': "Abnormal - Malignant",
         'save_record': "Save Record to Database",
@@ -94,19 +122,19 @@ text = {
         'support': "Contact Technical Support",
         'support_desc': "If you encounter any technical glitch, please write it here:",
         'send': "Send Report",
-        'msg_saved': "Login Successful! Features unlocked below.",
+        'msg_saved': "Login Successful!",
         'msg_record_added': "Patient successfully added to log!"
     }
 }
 
 L = text[st.session_state.lang]
 
-# 3. تصميم الـ CSS المخصص بالألوان المطلوبة (الواجهة رصاصي والكتابة أزرق)
-bg_color = "#E5E7EB"        # رصاصي فاتح للخلفية الأساسية
-text_color = "#1E3A8A"      # أزرق غامق للنصوص والكتابة الأساسية
-card_bg = "#F3F4F6"         # رصاصي مغاير قليلاً للحقول والخلفيات الداخلية
-border_color = "#9CA3AF"     # رصاصي للحدود
-btn_color = "#2563EB"        # أزرق للأزرار الرئيسية
+# 3. تصميم الـ CSS المخصص
+bg_color = "#E5E7EB"
+text_color = "#1E3A8A"
+card_bg = "#F3F4F6"
+border_color = "#9CA3AF"
+btn_color = "#2563EB"
 
 st.markdown(f"""
     <style>
@@ -129,7 +157,7 @@ st.markdown(f"""
     </style>
 """, unsafe_allow_html=True)
 
-# 4. الشريط العلوي (تبديل اللغة)
+# 4. الشريط العلوي
 top_col1, top_col2 = st.columns([7, 1])
 with top_col1:
     st.markdown(f"<h1 style='color: #1E3A8A;'>{L['title']}</h1>", unsafe_allow_html=True)
@@ -140,7 +168,7 @@ with top_col2:
 
 st.markdown(f"<hr style='border: 1px solid {border_color};'>", unsafe_allow_html=True)
 
-# 5. القائمة الجانبية (واجهة تفاعلية مثل الاكسل)
+# 5. القائمة الجانبية (Excel Style)
 with st.sidebar:
     st.markdown(f"## {L['menu_title']}")
     
@@ -149,7 +177,7 @@ with st.sidebar:
             df = pd.DataFrame(st.session_state.database)
             st.dataframe(df, use_container_width=True)
         else:
-            st.info("السجل فارغ حالياً. البيانات ستظهر هنا بتنسيق جدول إكسل فور حفظها.")
+            st.info("السجل فارغ حالياً.")
             
     with st.expander(L['support'], expanded=False):
         st.write(L['support_desc'])
@@ -157,7 +185,7 @@ with st.sidebar:
         if st.button(L['send']):
             st.success("تم إرسال بلاغك بنجاح.")
 
-# القسم الرئيسي: تسجيل دخول الطبيب
+# تسجيل دخول الطبيب
 st.markdown(f"### {L['login']}")
 col1, col2 = st.columns(2)
 with col1: password = st.text_input(L['pass'], type="password")
@@ -170,11 +198,10 @@ if st.button(L['btn_login']):
     else:
         st.warning("الرجاء إدخال بيانات الدخول.")
 
-# ظهور باقي الخصائص بعد تسجيل الدخول
+# بعد تسجيل الدخول
 if st.session_state.logged_in:
     st.markdown("<br><hr>", unsafe_allow_html=True)
 
-    # قسم بيانات المريض المطور
     st.markdown(f"### {L['patient_sec']}")
     p_name = st.text_input(L['p_name'])
     
@@ -191,41 +218,27 @@ if st.session_state.logged_in:
 
     st.markdown("<br><hr>", unsafe_allow_html=True)
 
-    # قسم رفع الملف
     st.markdown(f"### {L['upload_sec']}")
     uploaded_file = st.file_uploader(L['upload_placeholder'], type=["jpg", "jpeg", "png", "pdf"])
     if uploaded_file:
         st.image(uploaded_file, caption="Mammogram file loaded", width=300)
 
     st.markdown("<br><hr>", unsafe_allow_html=True)
-    # قسم النتيجة (مع لمسة وردي مخصصة للنتائج)
+
     st.markdown(f"### {L['result_sec']}")
     result_type = st.selectbox("", [L['normal'], L['benign'], L['malignant']])
 
     current_result = ""
     if result_type == L['normal']:
         current_result = "Normal (طبيعي)"
-        st.markdown("""
-            <div style="background-color: #FCE7F3; padding: 20px; border-radius: 10px; border-left: 8px solid #F472B6;">
-                <h3 style="color: #9D174D !important; margin: 0;">النتيجة: طبيعي (Normal)</h3>
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown('<div style="background-color: #FCE7F3; padding: 20px; border-radius: 10px; border-left: 8px solid #F472B6;"><h3 style="color: #9D174D !important; margin: 0;">النتيجة: طبيعي (Normal)</h3></div>', unsafe_allow_html=True)
     elif result_type == L['benign']:
         current_result = "Benign (حميد)"
-        st.markdown("""
-            <div style="background-color: #FBCFE8; padding: 20px; border-radius: 10px; border-left: 8px solid #EC4899;">
-                <h3 style="color: #831843 !important; margin: 0;">النتيجة: غير طبيعي - حميد (Benign)</h3>
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown('<div style="background-color: #FBCFE8; padding: 20px; border-radius: 10px; border-left: 8px solid #EC4899;"><h3 style="color: #831843 !important; margin: 0;">النتيجة: غير طبيعي - حميد (Benign)</h3></div>', unsafe_allow_html=True)
     elif result_type == L['malignant']:
         current_result = "Malignant (خبيث)"
-        st.markdown("""
-            <div style="background-color: #F472B6; padding: 20px; border-radius: 10px; border-left: 8px solid #9D174D;">
-                <h3 style="color: #4C0519 !important; margin: 0;">النتيجة: غير طبيعي - خبيث (Malignant)</h3>
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown('<div style="background-color: #F472B6; padding: 20px; border-radius: 10px; border-left: 8px solid #9D174D;"><h3 style="color: #4C0519 !important; margin: 0;">النتيجة: غير طبيعي - خبيث (Malignant)</h3></div>', unsafe_allow_html=True)
 
-    # زر حفظ السجل الحالي للجدول
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button(L['save_record']):
         if p_name:
@@ -243,21 +256,11 @@ if st.session_state.logged_in:
             }
             st.session_state.database.append(new_record)
             
-            # إرسال إشعار تلقائي للبوت
-            notification_text = (
-                f"📢 تسجيل مريض جديد\n\n"
-                f"👤 المريض: {p_name}\n"
-                f"📞 الهاتف: {p_phone}\n"
-                f"📅 موعد الإشعاع: {radiation_date}\n"
-                f"🔢 الجلسات: {current_radiation} من أصل {total_radiation}\n"
-                f"🩺 التشخيص: {current_result}"
-            )
-            send_telegram_notification("@atmanan_37", notification_text)
+            # 💡 تم حذف الإرسال الفوري من هنا، الخدمة بالخلفية هي من ستتولى الإرسال قبل الموعد بيوم.
             
             st.success(L['msg_record_added'])
             st.rerun()
         else:
             st.error("الرجاء إدخال اسم المريض أولاً.")
 
-# 6. التذييل الثابت
 st.markdown(f"<div class='footer'>{L['footer']}</div>", unsafe_allow_html=True)
